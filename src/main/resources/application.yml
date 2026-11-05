@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: hummingbird-alerts
+  datasource:
+    # In-memory H2: data is lost on restart (by design for a sandbox console).
+    url: jdbc:h2:mem:alerts;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+hummingbird:
+  # Sandbox by default. Production would be https://api.hummingbird.co
+  base-url: https://api.sandbox.hummingbird.co
+  api-version: "2026-02-05"
+  # API key created in Hummingbird: Settings > Organization Settings > Developers > API Keys
+  client-id: ${HUMMINGBIRD_CLIENT_ID:}
+  client-secret: ${HUMMINGBIRD_CLIENT_SECRET:}
+  # Shared secret shown when you register the webhook endpoint (HMAC-SHA256, X-Signature header)
+  webhook-secret: ${HUMMINGBIRD_WEBHOOK_SECRET:}
+  # Dev only: accept webhooks without a valid signature
+  webhook-allow-unsigned: false
+  # How often pending alerts are re-checked (ISO-8601 duration)
+  poll-interval: PT30S
