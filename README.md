@@ -58,6 +58,19 @@ Build the UI (`npm run build` in hummingbird-ui), copy its `dist/` contents into
 mvn package && java -jar target/hummingbird-alerts-0.1.0.jar    # everything on :8080
 ```
 
+### Against hummingbird-mock (no real credentials)
+Start [hummingbird-mock](https://github.com/sergyst/hummingbird-mock) (port 8089), then run the backend with the `mock` profile:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=mock                      # or: --spring.profiles.active=mock
+mvn spring-boot:run -Dspring-boot.run.profiles=mock -Dspring-boot.run.arguments=--server.port=8090   # if 8080 is taken
+```
+`application-mock.yml` sets `hummingbird.base-url=http://localhost:8089` and the mock's credentials and webhook secret; the
+UI shows a "Local mock" label. Without the profile the backend talks to the real sandbox (`application.yml`). Environment
+variables still override the profile (`HUMMINGBIRD_BASEURL`, `HUMMINGBIRD_CLIENT_ID`, ...). The mock sends webhooks to
+`localhost:8080` by default, so when the backend runs on another port start the mock with
+`--mock.webhook-url=http://localhost:<port>/api/webhooks/hummingbird` (or `--mock.webhooks-enabled=false`).
+
 ## Webhooks (optional)
 Alerts are also polled every 30 s (`hummingbird.poll-interval`), so webhooks are optional. To use them:
 1. Expose the backend publicly (e.g. `ngrok http 8080`).
