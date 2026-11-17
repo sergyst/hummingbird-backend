@@ -126,6 +126,20 @@ public final class Dtos {
                             boolean webhookSecretConfigured, String apiVersion, String dashboardUrl) {
     }
 
+    // ----------------------------------------------------------------- cases
+
+    /**
+     * A case with where it stands, taken from its reviews: the first review that is still active, else the latest.
+     * {@code error} is set (and the review fields are null) when that case's details could not be fetched.
+     */
+    public record CaseSummary(String token, String name, String createdAt, String updatedAt, String workflow,
+                              String stage, String status, int reviewCount, String error) {
+    }
+
+    /** One page of case summaries; {@code endCursor} goes into the next request as {@code after}. */
+    public record CaseSummaryPage(List<CaseSummary> cases, boolean hasNextPage, String endCursor) {
+    }
+
     // ------------------------------------------------------------- scenarios
 
     public record ScenarioInfo(String key, String title, String summary, boolean suspicious, boolean sendsAlert) {

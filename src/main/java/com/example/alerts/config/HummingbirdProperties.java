@@ -12,7 +12,9 @@ public record HummingbirdProperties(
         @DefaultValue("") String clientSecret,
         @DefaultValue("") String webhookSecret,
         @DefaultValue("false") boolean webhookAllowUnsigned,
-        @DefaultValue("PT30S") Duration pollInterval) {
+        @DefaultValue("PT30S") Duration pollInterval,
+        /** How many GET /cases/{token} calls the case summaries may have in flight at once. */
+        @DefaultValue("4") int caseDetailConcurrency) {
 
     public boolean hasCredentials() {
         return !clientId.isBlank() && !clientSecret.isBlank();

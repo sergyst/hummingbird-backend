@@ -27,3 +27,5 @@ hummingbird:
   webhook-allow-unsigned: false
   # How often pending alerts are re-checked (ISO-8601 duration)
   poll-interval: PT30S
+  # Parallel GET /cases/{token} calls when building case summaries (keep low to stay under Hummingbird's rate limit)
+  case-detail-concurrency: 4

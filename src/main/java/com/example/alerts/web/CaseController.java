@@ -1,6 +1,7 @@
 package com.example.alerts.web;
 
 import com.example.alerts.service.CaseService;
+import com.example.alerts.web.Dtos.CaseSummaryPage;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +24,15 @@ public class CaseController {
     @GetMapping("/cases")
     public Map<String, Object> list(@RequestParam Map<String, String> params) {
         return cases.listCases(params);
+    }
+
+    /**
+     * Like {@code /cases}, but each case comes with its workflow, stage and status (see
+     * {@link CaseService#listCaseSummaries}). Accepts the same parameters plus {@code refresh=true} to bypass the cache.
+     */
+    @GetMapping("/cases/summaries")
+    public CaseSummaryPage summaries(@RequestParam Map<String, String> params) {
+        return cases.listCaseSummaries(params);
     }
 
     @GetMapping("/cases/{token}")

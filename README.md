@@ -14,6 +14,7 @@ Spring Boot 4 (Java 21, H2 in-memory) server for working with **alerts** in the
 | `POST /alerts/id_lookup` (303 → `GET /alerts/{token}`) | Case-alert outcome and lifecycle events |
 | `GET /cases` (e.g. `first=25&workflow=triage`) | List the cases created from alerts (pass-through) |
 | `GET /cases/{token}` | Fetch one case (pass-through) |
+| `GET /api/cases/summaries` (this app) | A page of cases **with workflow, stage and status**. The cases list has none of those, so each case is fetched (at most `hummingbird.case-detail-concurrency` = 4 in parallel) and summarised from its first still-active review, else its latest. Cached per case until its `updated_at` changes; `refresh=true` skips the cache. A case that fails to load comes back with `error` set instead of failing the page |
 | `GET /reviews` (e.g. `case_token=…&page_size=25`) | List reviews of a case (pass-through) |
 | Webhooks `alert.processed`, `alert.stuck` | Instant status updates, verified with HMAC-SHA256 (`X-Signature`) |
 | Webhooks `case.created`, `case.merged`, `review.created`, `review.completed`, `action.decision_made`, `filing.status_updated` | Matched to our alerts by case token: activity log, case merges, filing status, and a re-check of the outcome |
@@ -69,7 +70,7 @@ Unsigned/invalid messages get `401`. For local experiments only, `hummingbird.we
 `GET /api/config` · `GET /api/stats` · `GET /api/alerts?state=&q=&page=&size=` · `GET /api/alerts/{id}` ·
 `POST /api/alerts` · `POST /api/alerts/{id}/refresh` · `POST /api/alerts/refresh-pending` ·
 `GET /api/alerts/{id}/lifecycle` (also stores the outcome) · `DELETE /api/alerts/{id}` (local copy only) ·
-`GET /api/cases?workflow=&first=…` · `GET /api/cases/{token}` · `GET /api/reviews?case_token=&page_size=…`
+`GET /api/cases/summaries?workflow=&first=&after=&refresh=true` · `GET /api/cases?workflow=&first=…` · `GET /api/cases/{token}` · `GET /api/reviews?case_token=&page_size=…`
 (cases/reviews forward every query parameter to Hummingbird and return its JSON unchanged; paging: cases use
 `first` / `after` (cursor in `page_info.end_cursor`), reviews use `page_size` / `page_token` (`next_page_token`)) ·
 `GET /api/scenarios` · `POST /api/scenarios/{normal|false_alarm|structuring}/run` · `POST /api/webhooks/hummingbird`
