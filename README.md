@@ -70,7 +70,8 @@ Unsigned/invalid messages get `401`. For local experiments only, `hummingbird.we
 `POST /api/alerts` · `POST /api/alerts/{id}/refresh` · `POST /api/alerts/refresh-pending` ·
 `GET /api/alerts/{id}/lifecycle` (also stores the outcome) · `DELETE /api/alerts/{id}` (local copy only) ·
 `GET /api/cases?workflow=&first=…` · `GET /api/cases/{token}` · `GET /api/reviews?case_token=&page_size=…`
-(cases/reviews forward every query parameter to Hummingbird and return its JSON unchanged) ·
+(cases/reviews forward every query parameter to Hummingbird and return its JSON unchanged; paging: cases use
+`first` / `after` (cursor in `page_info.end_cursor`), reviews use `page_size` / `page_token` (`next_page_token`)) ·
 `GET /api/scenarios` · `POST /api/scenarios/{normal|false_alarm|structuring}/run` · `POST /api/webhooks/hummingbird`
 
 ## Notes

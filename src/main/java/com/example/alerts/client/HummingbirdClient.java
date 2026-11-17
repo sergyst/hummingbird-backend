@@ -181,7 +181,9 @@ public class HummingbirdClient {
             if (raw != null && raw.startsWith("{")) {
                 Map<String, Object> json = JsonParserFactory.getJsonParser().parseMap(raw);
                 if (json.get("error") instanceof Map<?, ?> err) {
+                    // documented error body: {success:false, error:{type, message}}
                     if (err.get("code") != null) code = String.valueOf(err.get("code"));
+                    else if (err.get("type") != null) code = String.valueOf(err.get("type"));
                     if (err.get("message") != null) message = String.valueOf(err.get("message"));
                     if (err.get("param") != null && !String.valueOf(err.get("param")).isBlank()) {
                         message += " (" + err.get("param") + ")";
