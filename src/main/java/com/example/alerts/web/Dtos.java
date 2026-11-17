@@ -122,8 +122,9 @@ public final class Dtos {
     public record RefreshSummary(int checked, int changed, int failed) {
     }
 
+    /** {@code environment} is "local", "sandbox" or "production"; {@code dashboardUrl} is null when there is no dashboard (local). */
     public record AppConfig(String baseUrl, boolean sandbox, boolean credentialsConfigured,
-                            boolean webhookSecretConfigured, String apiVersion, String dashboardUrl) {
+                            boolean webhookSecretConfigured, String apiVersion, String dashboardUrl, String environment) {
     }
 
     // ----------------------------------------------------------------- cases

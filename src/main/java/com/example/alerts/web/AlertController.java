@@ -41,9 +41,13 @@ public class AlertController {
 
     @GetMapping("/config")
     public AppConfig config() {
-        String dashboard = props.sandbox() ? "https://sandbox.hummingbird.co" : "https://app.hummingbird.co";
+        String dashboard = switch (props.environment()) {
+            case "local" -> null; // a local stand-in has no Hummingbird dashboard
+            case "sandbox" -> "https://sandbox.hummingbird.co";
+            default -> "https://app.hummingbird.co";
+        };
         return new AppConfig(props.baseUrl(), props.sandbox(), props.hasCredentials(),
-                !props.webhookSecret().isBlank(), props.apiVersion(), dashboard);
+                !props.webhookSecret().isBlank(), props.apiVersion(), dashboard, props.environment());
     }
 
     @GetMapping("/stats")

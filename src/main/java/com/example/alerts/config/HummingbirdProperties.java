@@ -20,7 +20,22 @@ public record HummingbirdProperties(
         return !clientId.isBlank() && !clientSecret.isBlank();
     }
 
+    /** True for anything that is not the production API (the sandbox, or a local stand-in such as hummingbird-mock). */
     public boolean sandbox() {
-        return baseUrl.contains("sandbox");
+        return !"production".equals(environment());
+    }
+
+    /** {@code local} (localhost / 127.0.0.1 / ::1), {@code sandbox} (URL contains "sandbox") or {@code production}. */
+    public String environment() {
+        String host;
+        try {
+            host = java.net.URI.create(baseUrl).getHost();
+        } catch (IllegalArgumentException e) {
+            host = null;
+        }
+        if (host != null && (host.equals("localhost") || host.equals("127.0.0.1") || host.equals("[::1]") || host.equals("::1"))) {
+            return "local";
+        }
+        return baseUrl.contains("sandbox") ? "sandbox" : "production";
     }
 }
