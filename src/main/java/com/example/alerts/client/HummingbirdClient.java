@@ -73,15 +73,46 @@ public class HummingbirdClient {
                 Map.of("case_alert", Map.of("alert_id", externalAlertId)), true);
     }
 
+    // ----------------------------------------------------------------- cases
+
+    /**
+     * GET /cases - lists cases. {@code query} is passed through as-is (e.g. {@code first=25},
+     * {@code workflow=triage}, and the paging cursor Hummingbird returned); blank values are dropped.
+     */
+    public Map<String, Object> listCases(Map<String, String> query) {
+        return call(HttpMethod.GET, "/cases", query, null, true);
+    }
+
+    /** GET /cases/{token} - a single case. */
+    public Map<String, Object> getCase(String caseToken) {
+        return call(HttpMethod.GET, "/cases/{token}", Map.of(), null, true, caseToken);
+    }
+
+    /** GET /reviews - lists reviews, e.g. {@code case_token=...&page_size=25}. */
+    public Map<String, Object> listReviews(Map<String, String> query) {
+        return call(HttpMethod.GET, "/reviews", query, null, true);
+    }
+
     // ------------------------------------------------------------------ core
 
     private Map<String, Object> call(HttpMethod method, String path, Object body, boolean authenticated, Object... vars) {
+        return call(method, path, Map.of(), body, authenticated, vars);
+    }
+
+    private Map<String, Object> call(HttpMethod method, String path, Map<String, String> query, Object body,
+                                     boolean authenticated, Object... vars) {
         for (int attempt = 1; ; attempt++) {
             try {
                 RestClient.RequestBodySpec spec = http.method(method)
-                        .uri(b -> b.path(path)
-                                .queryParam("apiVersion", props.apiVersion())
-                                .build(vars))
+                        .uri(b -> {
+                            b.path(path);
+                            query.forEach((k, v) -> {
+                                if (v != null && !v.isBlank() && !"apiVersion".equals(k)) {
+                                    b.queryParam(k, v);
+                                }
+                            });
+                            return b.queryParam("apiVersion", props.apiVersion()).build(vars);
+                        })
                         .accept(MediaType.APPLICATION_JSON);
                 if (authenticated) {
                     spec = spec.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken());

@@ -7,6 +7,7 @@ import com.example.alerts.domain.AlertEventRepository;
 import com.example.alerts.domain.AlertRecord;
 import com.example.alerts.domain.AlertRepository;
 import com.example.alerts.domain.AlertState;
+import com.example.alerts.web.Dtos.CryptoAddressInput;
 import com.example.alerts.web.Dtos.DayCount;
 import com.example.alerts.web.Dtos.RefreshSummary;
 import com.example.alerts.web.Dtos.Stats;
@@ -176,7 +177,7 @@ public class AlertService {
         return t.currency() == null || t.currency().isBlank() ? "USD" : t.currency().trim().toUpperCase(Locale.ROOT);
     }
 
-    private Map<String, Object> buildPayload(SubmitAlertRequest req, List<TransactionInput> txs,
+    Map<String, Object> buildPayload(SubmitAlertRequest req, List<TransactionInput> txs,
                                              String externalId, Instant triggeredAt) {
         Map<String, Object> alert = new LinkedHashMap<>();
         alert.put("id", externalId);
@@ -189,8 +190,29 @@ public class AlertService {
             alert.put("review_tags", req.reviewTags().stream().map(String::trim).filter(s -> !s.isEmpty()).toList());
         }
 
+        if (req.otherInfo() != null && !req.otherInfo().isEmpty()) {
+            alert.put("other_info", req.otherInfo().stream()
+                    .map(o -> Map.of("label", o.label().trim(), "value", o.value().trim()))
+                    .toList());
+        }
+
         List<Map<String, Object>> references = new ArrayList<>();
         Map<String, Object> data = new LinkedHashMap<>();
+
+        if (req.cryptoAddresses() != null && !req.cryptoAddresses().isEmpty()) {
+            List<Map<String, Object>> addresses = new ArrayList<>();
+            for (int i = 0; i < req.cryptoAddresses().size(); i++) {
+                CryptoAddressInput c = req.cryptoAddresses().get(i);
+                String addrId = c.id() == null || c.id().isBlank() ? "ADDR-" + externalId + "-" + (i + 1) : c.id().trim();
+                Map<String, Object> addr = new LinkedHashMap<>();
+                addr.put("id", addrId);
+                addr.put("address", c.address().trim());
+                addr.put("blockchain", c.blockchain().trim().toUpperCase(Locale.ROOT));
+                addresses.add(addr);
+                references.add(Map.of("type", "crypto_address", "id", addrId));
+            }
+            data.put("crypto_addresses", addresses);
+        }
 
         if (req.subjectName() != null && !req.subjectName().isBlank()) {
             String individualId = "IND-" + externalId;
@@ -229,6 +251,9 @@ public class AlertService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("alerts", List.of(alert));
+        if (req.workflow() != null && !req.workflow().isBlank()) {
+            payload.put("workflow", req.workflow().trim());
+        }
         if (!data.isEmpty()) {
             payload.put("data", data);
         }

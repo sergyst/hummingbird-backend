@@ -43,7 +43,25 @@ public final class Dtos {
             @PositiveOrZero Long amountMinor,
             @Size(min = 3, max = 8) String currency,
             String direction,
-            List<@Valid TransactionInput> transactions) {
+            List<@Valid TransactionInput> transactions,
+            /** Hummingbird workflow the alert is routed to, e.g. "triage". Omitted when blank. */
+            @Size(max = 100) String workflow,
+            List<@Valid CryptoAddressInput> cryptoAddresses,
+            List<@Valid OtherInfoInput> otherInfo) {
+    }
+
+    /** A crypto address referenced by the alert. {@code id} is generated when blank. */
+    public record CryptoAddressInput(
+            @Size(max = 256) String id,
+            @NotBlank @Size(max = 512) String address,
+            /** Hummingbird blockchain enum, e.g. ETHEREUM, BITCOIN. */
+            @NotBlank @Size(max = 64) String blockchain) {
+    }
+
+    /** Free-form label/value pair sent as the alert's {@code other_info}. */
+    public record OtherInfoInput(
+            @NotBlank @Size(max = 256) String label,
+            @NotBlank @Size(max = 4000) String value) {
     }
 
     public record AlertView(

@@ -58,7 +58,8 @@ public class ScenarioService {
                 .toList();
 
         AlertRecord rec = alerts.submit(new SubmitAlertRequest(
-                null, h.rule(), h.comments(), Instant.now(), h.tags(), s.customer(), null, null, null, inputs));
+                null, h.rule(), h.comments(), Instant.now(), h.tags(), s.customer(), null, null, null, inputs,
+                null, null, null));
 
         return new ScenarioResult(s.key(), s.title(), s.customer(), s.avgMonthlyInboundMinor(), s.txs(), true, h.rule(),
                 "Rule fired → alert sent to Hummingbird with " + inputs.size() + " transaction(s). "
