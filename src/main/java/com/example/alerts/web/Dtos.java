@@ -133,7 +133,7 @@ public final class Dtos {
      * A case with where it stands, taken from its reviews: the first review that is still active, else the latest.
      * {@code error} is set (and the review fields are null) when that case's details could not be fetched.
      */
-    public record CaseSummary(String token, String name, String createdAt, String updatedAt, String workflow,
+    public record CaseSummary(String token, String name, Instant createdAt, Instant updatedAt, String workflow,
                               String stage, String status, int reviewCount, String error) {
     }
 

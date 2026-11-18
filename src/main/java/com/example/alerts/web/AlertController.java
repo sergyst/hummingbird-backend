@@ -1,5 +1,6 @@
 package com.example.alerts.web;
 
+import com.example.alerts.client.model.CaseAlertResponse;
 import com.example.alerts.config.HummingbirdProperties;
 import com.example.alerts.domain.AlertRecord;
 import com.example.alerts.domain.AlertState;
@@ -14,7 +15,6 @@ import com.example.alerts.web.Dtos.Stats;
 import com.example.alerts.web.Dtos.SubmitAlertRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
-import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -92,9 +92,9 @@ public class AlertController {
         return service.refreshAllPending();
     }
 
-    /** Pass-through of Hummingbird's case alert (outcome + lifecycle events). */
+    /** The case alert Hummingbird holds for this alert (outcome + lifecycle events). */
     @GetMapping("/alerts/{id}/lifecycle")
-    public Map<String, Object> lifecycle(@PathVariable Long id) {
+    public CaseAlertResponse lifecycle(@PathVariable Long id) {
         return service.lifecycle(id);
     }
 

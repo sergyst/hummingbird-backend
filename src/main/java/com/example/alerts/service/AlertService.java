@@ -2,6 +2,11 @@ package com.example.alerts.service;
 
 import com.example.alerts.client.HummingbirdApiException;
 import com.example.alerts.client.HummingbirdClient;
+import com.example.alerts.client.model.AlertImportStatus;
+import com.example.alerts.client.model.AlertImportStatusResponse;
+import com.example.alerts.client.model.AlertImportsCreated;
+import com.example.alerts.client.model.CaseAlert;
+import com.example.alerts.client.model.CaseAlertResponse;
 import com.example.alerts.domain.AlertEvent;
 import com.example.alerts.domain.AlertEventRepository;
 import com.example.alerts.domain.AlertRecord;
@@ -132,7 +137,7 @@ public class AlertService {
 
         Instant triggeredAt = req.triggeredAt() == null ? Instant.now() : req.triggeredAt();
         List<TransactionInput> txs = effectiveTransactions(req);
-        Map<String, Object> response = client.upsertAlertImport(buildPayload(req, txs, externalId, triggeredAt));
+        AlertImportsCreated response = client.upsertAlertImport(buildPayload(req, txs, externalId, triggeredAt));
 
         String processingToken = extractProcessingToken(response, externalId);
 
@@ -260,16 +265,13 @@ public class AlertService {
         return payload;
     }
 
-    private static String extractProcessingToken(Map<String, Object> response, String externalId) {
-        if (response != null && response.get("alerts") instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> m && externalId.equals(String.valueOf(m.get("id"))) && m.get("token") != null) {
-                    return String.valueOf(m.get("token"));
-                }
-            }
+    private static String extractProcessingToken(AlertImportsCreated response, String externalId) {
+        String token = response == null ? null : response.processingTokenFor(externalId);
+        if (token == null) {
+            throw new HummingbirdApiException(502, "BAD_RESPONSE",
+                    "Hummingbird accepted the request but returned no processing token for alert " + externalId, null);
         }
-        throw new HummingbirdApiException(502, "BAD_RESPONSE",
-                "Hummingbird accepted the request but returned no processing token for alert " + externalId, null);
+        return token;
     }
 
     // --------------------------------------------------------------- refresh
@@ -281,7 +283,7 @@ public class AlertService {
             throw new IllegalStateException(
                     "This alert has no processing token (it was learned from a webhook), so it cannot be polled.");
         }
-        Map<String, Object> res = client.getAlertImport(rec.getProcessingToken());
+        AlertImportStatusResponse res = client.getAlertImport(rec.getProcessingToken());
         AlertState before = rec.getState();
         boolean changed = applyImportResponse(rec, res);
         if (before != AlertState.PROCESSED && rec.getState() == AlertState.PROCESSED) {
@@ -323,11 +325,11 @@ public class AlertService {
 
     /**
      * Case-alert lifecycle (opened / escalated / filed / not_filed ...) via POST /alerts/id_lookup.
-     * Stores the outcome and returns Hummingbird's raw response for display.
+     * Stores the outcome and returns the case alert for display.
      */
-    public Map<String, Object> lifecycle(Long id) {
+    public CaseAlertResponse lifecycle(Long id) {
         AlertRecord rec = get(id);
-        Map<String, Object> res = client.lookupCaseAlert(rec.getExternalId());
+        CaseAlertResponse res = client.lookupCaseAlert(rec.getExternalId());
         applyCaseAlert(rec, res);
         return res;
     }
@@ -366,19 +368,17 @@ public class AlertService {
         return new RefreshSummary(checked, changed, failed);
     }
 
-    @SuppressWarnings("unchecked")
-    private AlertRecord applyCaseAlert(AlertRecord rec, Map<String, Object> res) {
-        if (res == null || !(res.get("case_alert") instanceof Map<?, ?> raw)) {
+    private AlertRecord applyCaseAlert(AlertRecord rec, CaseAlertResponse res) {
+        CaseAlert ca = res == null ? null : res.caseAlert();
+        if (ca == null) {
             return rec;
         }
-        Map<String, Object> ca = (Map<String, Object>) raw;
         String before = rec.getOutcome();
-        String outcome = str(ca.get("outcome"));
-        if (outcome != null) {
-            rec.setOutcome(outcome.toLowerCase(Locale.ROOT));
+        if (ca.outcome() != null) {
+            rec.setOutcome(ca.outcome().toLowerCase(Locale.ROOT));
         }
-        if (ca.get("token") != null) {
-            rec.setAlertToken(String.valueOf(ca.get("token")));
+        if (ca.token() != null) {
+            rec.setAlertToken(ca.token());
         }
         rec.setOutcomeCheckedAt(Instant.now());
         rec.setOutcomeStale(false);
@@ -389,39 +389,33 @@ public class AlertService {
         return rec;
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean applyImportResponse(AlertRecord rec, Map<String, Object> res) {
-        if (res == null || !(res.get("alert") instanceof Map<?, ?> raw)) {
+    private boolean applyImportResponse(AlertRecord rec, AlertImportStatusResponse res) {
+        AlertImportStatus a = res == null ? null : res.alert();
+        if (a == null) {
             return false;
         }
-        Map<String, Object> a = (Map<String, Object>) raw;
         boolean changed = false;
 
-        AlertState state = AlertState.fromApi(a.get("state"));
+        AlertState state = AlertState.fromApi(a.state());
         if (state != rec.getState()) {
             rec.setState(state);
             changed = true;
         }
-        changed |= setIfDifferent(a.get("case_token"), rec.getCaseToken(), rec::setCaseToken);
-        changed |= setIfDifferent(a.get("review_token"), rec.getReviewToken(), rec::setReviewToken);
-        changed |= setIfDifferent(a.get("error"), rec.getErrorMessage(), rec::setErrorMessage);
-        if (a.get("processed_at") != null && rec.getProcessedAt() == null) {
-            try {
-                rec.setProcessedAt(Instant.parse(String.valueOf(a.get("processed_at"))));
-            } catch (RuntimeException e) {
-                rec.setProcessedAt(Instant.now());
-            }
+        changed |= setIfDifferent(a.caseToken(), rec.getCaseToken(), rec::setCaseToken);
+        changed |= setIfDifferent(a.reviewToken(), rec.getReviewToken(), rec::setReviewToken);
+        changed |= setIfDifferent(a.error(), rec.getErrorMessage(), rec::setErrorMessage);
+        if (a.processedAt() != null && rec.getProcessedAt() == null) {
+            rec.setProcessedAt(a.processedAt());
             changed = true;
         }
         return changed;
     }
 
-    private static boolean setIfDifferent(Object incoming, String current, Consumer<String> setter) {
-        String value = incoming == null ? null : String.valueOf(incoming);
-        if (value == null || value.equals(current)) {
+    private static boolean setIfDifferent(String incoming, String current, Consumer<String> setter) {
+        if (incoming == null || incoming.equals(current)) {
             return false;
         }
-        setter.accept(value);
+        setter.accept(incoming);
         return true;
     }
 

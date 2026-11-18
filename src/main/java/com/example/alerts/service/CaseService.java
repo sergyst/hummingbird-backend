@@ -2,10 +2,13 @@ package com.example.alerts.service;
 
 import com.example.alerts.client.HummingbirdApiException;
 import com.example.alerts.client.HummingbirdClient;
+import com.example.alerts.client.model.CaseDetailResponse;
+import com.example.alerts.client.model.CaseList;
 import com.example.alerts.config.HummingbirdProperties;
 import com.example.alerts.web.Dtos.CaseSummary;
 import com.example.alerts.web.Dtos.CaseSummaryPage;
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -13,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -25,14 +27,14 @@ import org.springframework.stereotype.Service;
 
 /**
  * Read-only access to the cases and reviews Hummingbird created from our alerts.
- * {@link #listCases}, {@link #getCase} and {@link #listReviews} pass Hummingbird's JSON through unchanged.
- * {@link #listCaseSummaries} adds each case's workflow, stage and status, which the cases list does not carry.
+ * {@link #listCases}, {@link #getCase} and {@link #listReviews} pass Hummingbird's JSON through unchanged (they back
+ * the console's raw views). {@link #listCaseSummaries} works on the typed client responses and adds each case's
+ * workflow, stage and status, which the cases list does not carry.
  */
 @Service
 public class CaseService {
 
     private static final Logger log = LoggerFactory.getLogger(CaseService.class);
-    private static final Set<String> DONE = Set.of("COMPLETED", "CANCELLED", "APPROVED");
     private static final int CACHE_SIZE = 1000;
 
     private final HummingbirdClient client;
@@ -60,16 +62,16 @@ public class CaseService {
 
     /** GET /cases. {@code params} are forwarded as query parameters (first, workflow, cursor, ...). */
     public Map<String, Object> listCases(Map<String, String> params) {
-        return client.listCases(withDefault(params, "first", "25"));
+        return client.listCasesJson(withDefault(params, "first", "25"));
     }
 
     public Map<String, Object> getCase(String caseToken) {
-        return client.getCase(caseToken);
+        return client.getCaseJson(caseToken);
     }
 
     /** GET /reviews. {@code params} are forwarded (case_token, page_size, ...). */
     public Map<String, Object> listReviews(Map<String, String> params) {
-        return client.listReviews(withDefault(params, "page_size", "25"));
+        return client.listReviewsJson(withDefault(params, "page_size", "25"));
     }
 
     // -------------------------------------------------------------- summaries
@@ -80,23 +82,17 @@ public class CaseService {
      * changes; pass {@code refresh=true} to ignore the cache. A case whose details fail to load gets a summary
      * with {@code error} set, so one bad case does not hide the rest; auth/config failures abort the request.
      */
-    @SuppressWarnings("unchecked")
     public CaseSummaryPage listCaseSummaries(Map<String, String> params) {
         Map<String, String> query = new LinkedHashMap<>(params);
         boolean refresh = "true".equalsIgnoreCase(query.remove("refresh"));
-        Map<String, Object> list = client.listCases(withDefault(query, "first", "25"));
+        CaseList list = client.listCases(withDefault(query, "first", "25"));
 
         List<CompletableFuture<CaseSummary>> futures = new ArrayList<>();
-        if (list != null && list.get("cases") instanceof List<?> items) {
-            for (Object item : items) {
-                if (item instanceof Map<?, ?> m && m.get("case") instanceof Map<?, ?> c) {
-                    Map<String, Object> kase = (Map<String, Object>) c;
-                    String token = str(kase.get("token"));
-                    if (token != null) {
-                        futures.add(CompletableFuture.supplyAsync(
-                                () -> summarise(token, str(kase.get("created_at")), str(kase.get("updated_at")), refresh), pool));
-                    }
-                }
+        for (CaseList.Item item : list.cases()) {
+            CaseList.Ref ref = item.kase();
+            if (ref != null && ref.token() != null) {
+                futures.add(CompletableFuture.supplyAsync(
+                        () -> summarise(ref.token(), ref.createdAt(), ref.updatedAt(), refresh), pool));
             }
         }
 
@@ -112,13 +108,11 @@ public class CaseService {
             }
         }
 
-        Object info = list == null ? null : list.get("page_info");
-        boolean hasNext = info instanceof Map<?, ?> i && Boolean.TRUE.equals(i.get("has_next_page"));
-        String end = info instanceof Map<?, ?> i ? str(i.get("end_cursor")) : null;
-        return new CaseSummaryPage(summaries, hasNext, hasNext ? end : null);
+        boolean hasNext = list.pageInfo() != null && list.pageInfo().hasNext();
+        return new CaseSummaryPage(summaries, hasNext, hasNext ? list.pageInfo().endCursor() : null);
     }
 
-    private CaseSummary summarise(String token, String createdAt, String updatedAt, boolean refresh) {
+    private CaseSummary summarise(String token, Instant createdAt, Instant updatedAt, boolean refresh) {
         if (!refresh) {
             CaseSummary cached = cache.get(token);
             if (cached != null && Objects.equals(cached.updatedAt(), updatedAt)) {
@@ -127,8 +121,7 @@ public class CaseService {
         }
         gate.acquireUninterruptibly();
         try {
-            Map<String, Object> res = client.getCase(token);
-            CaseSummary summary = fromCase(token, createdAt, updatedAt, res);
+            CaseSummary summary = fromCase(token, createdAt, updatedAt, client.getCase(token));
             cache.put(token, summary);
             return summary;
         } catch (HummingbirdApiException e) {
@@ -142,33 +135,25 @@ public class CaseService {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    static CaseSummary fromCase(String token, String createdAt, String updatedAt, Map<String, Object> res) {
-        Map<String, Object> kase = res != null && res.get("case") instanceof Map<?, ?> c ? (Map<String, Object>) c : Map.of();
-        List<Map<String, Object>> reviews = new ArrayList<>();
-        if (kase.get("reviews") instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> m) reviews.add((Map<String, Object>) m);
-            }
-        }
-        Map<String, Object> pick = null;
-        for (Map<String, Object> r : reviews) {
-            if (!DONE.contains(String.valueOf(r.get("status")).toUpperCase(Locale.ROOT))) {
-                pick = r;
-                break;
-            }
-        }
-        if (pick == null && !reviews.isEmpty()) pick = reviews.get(reviews.size() - 1);
-        String status = pick == null || pick.get("status") == null ? null : String.valueOf(pick.get("status")).toUpperCase(Locale.ROOT);
-        return new CaseSummary(token, str(kase.get("name")),
-                str(kase.get("created_at")) != null ? str(kase.get("created_at")) : createdAt,
-                updatedAt != null ? updatedAt : str(kase.get("updated_at")),
-                pick == null ? null : str(pick.get("workflow")), pick == null ? null : str(pick.get("stage")),
-                status, reviews.size(), null);
-    }
-
-    private static String str(Object o) {
-        return o == null ? null : String.valueOf(o);
+    /**
+     * Summarises a case by one of its reviews: the first one that is still active, else the latest. The list's
+     * {@code createdAt}/{@code updatedAt} are the fallback when the detail response has none.
+     */
+    static CaseSummary fromCase(String token, Instant createdAt, Instant updatedAt, CaseDetailResponse res) {
+        CaseDetailResponse.Case kase = res == null ? null : res.kase();
+        List<CaseDetailResponse.Review> reviews = kase == null ? List.of() : kase.reviews();
+        CaseDetailResponse.Review pick = reviews.stream()
+                .filter(r -> r.reviewStatus() == null || !r.reviewStatus().isDone())
+                .findFirst()
+                .orElse(reviews.isEmpty() ? null : reviews.get(reviews.size() - 1));
+        return new CaseSummary(token,
+                kase == null ? null : kase.name(),
+                kase != null && kase.createdAt() != null ? kase.createdAt() : createdAt,
+                updatedAt != null ? updatedAt : kase == null ? null : kase.updatedAt(),
+                pick == null ? null : pick.workflow(),
+                pick == null ? null : pick.stage(),
+                pick == null || pick.status() == null ? null : pick.status().toUpperCase(Locale.ROOT),
+                reviews.size(), null);
     }
 
     private static Map<String, String> withDefault(Map<String, String> params, String key, String value) {

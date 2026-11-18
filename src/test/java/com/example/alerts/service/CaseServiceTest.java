@@ -14,10 +14,14 @@ import static org.mockito.Mockito.when;
 
 import com.example.alerts.client.HummingbirdApiException;
 import com.example.alerts.client.HummingbirdClient;
+import com.example.alerts.client.model.CaseDetailResponse;
+import com.example.alerts.client.model.CaseList;
+import com.example.alerts.client.model.PageInfo;
 import com.example.alerts.config.HummingbirdProperties;
 import com.example.alerts.web.Dtos.CaseSummary;
 import com.example.alerts.web.Dtos.CaseSummaryPage;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,31 +35,32 @@ class CaseServiceTest {
     private final CaseService service = new CaseService(client,
             new HummingbirdProperties("http://x", "2026-02-05", "", "", "", false, Duration.ofSeconds(30), 2));
 
-    private static Map<String, Object> listOf(boolean hasNext, String cursor, String... tokenAndUpdated) {
-        List<Map<String, Object>> cases = new ArrayList<>();
+    private static Instant ts(int n) {
+        return Instant.parse("2026-11-01T00:00:00Z").plusSeconds(n);
+    }
+
+    /** A cases page; arguments after the cursor are token / updated-at pairs. */
+    private static CaseList listOf(boolean hasNext, String cursor, Object... tokenAndUpdated) {
+        List<CaseList.Item> cases = new ArrayList<>();
         for (int i = 0; i < tokenAndUpdated.length; i += 2) {
-            cases.add(Map.of("cursor", tokenAndUpdated[i], "case", Map.of(
-                    "token", tokenAndUpdated[i], "created_at", "2026-11-01T00:00:00Z", "updated_at", tokenAndUpdated[i + 1])));
+            String token = (String) tokenAndUpdated[i];
+            cases.add(new CaseList.Item(token, new CaseList.Ref(token, ts(0), (Instant) tokenAndUpdated[i + 1])));
         }
-        Map<String, Object> info = new java.util.HashMap<>();
-        info.put("has_next_page", hasNext);
-        info.put("end_cursor", cursor);
-        return Map.of("success", true, "cases", cases, "page_info", info);
+        return new CaseList(true, cases, new PageInfo(hasNext, false, null, cursor));
     }
 
-    private static Map<String, Object> review(String workflow, String stage, String status) {
-        return Map.of("workflow", workflow, "stage", stage, "status", status);
+    private static CaseDetailResponse.Review review(String workflow, String stage, String status) {
+        return new CaseDetailResponse.Review("rev_" + stage, workflow, stage, status);
     }
 
-    @SafeVarargs
-    private static Map<String, Object> detail(String token, Map<String, Object>... reviews) {
-        return Map.of("success", true, "case", Map.of("token", token, "name", "Case " + token,
-                "created_at", "2026-11-01T00:00:00Z", "reviews", List.of(reviews), "filings", List.of()));
+    private static CaseDetailResponse detail(String token, CaseDetailResponse.Review... reviews) {
+        return new CaseDetailResponse(true,
+                new CaseDetailResponse.Case(token, null, "Case " + token, ts(0), ts(1), List.of(reviews)));
     }
 
     @Test
     void summaryComesFromTheFirstActiveReview() {
-        when(client.listCases(anyMap())).thenReturn(listOf(true, "cur-1", "t1", "u1"));
+        when(client.listCases(anyMap())).thenReturn(listOf(true, "cur-1", "t1", ts(1)));
         when(client.getCase("t1")).thenReturn(detail("t1",
                 review("triage", "Complete", "completed"), review("aml-investigation", "Escalation", "opened")));
 
@@ -75,7 +80,7 @@ class CaseServiceTest {
 
     @Test
     void whenEverythingIsDoneTheLatestReviewWins() {
-        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", "u1"));
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", ts(1)));
         when(client.getCase("t1")).thenReturn(detail("t1",
                 review("triage", "Triage", "completed"), review("filing", "Filing", "approved")));
 
@@ -89,7 +94,7 @@ class CaseServiceTest {
 
     @Test
     void caseWithoutReviewsHasNoStatus() {
-        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", "u1"));
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", ts(1)));
         when(client.getCase("t1")).thenReturn(detail("t1"));
 
         CaseSummary s = service.listCaseSummaries(Map.of()).cases().get(0);
@@ -102,9 +107,9 @@ class CaseServiceTest {
     @Test
     void summariesAreCachedUntilTheCaseChanges() {
         when(client.listCases(anyMap()))
-                .thenReturn(listOf(false, null, "t1", "u1"))
-                .thenReturn(listOf(false, null, "t1", "u1"))
-                .thenReturn(listOf(false, null, "t1", "u2"));
+                .thenReturn(listOf(false, null, "t1", ts(1)))
+                .thenReturn(listOf(false, null, "t1", ts(1)))
+                .thenReturn(listOf(false, null, "t1", ts(2)));
         when(client.getCase("t1")).thenReturn(detail("t1", review("triage", "Triage", "opened")));
 
         service.listCaseSummaries(Map.of());
@@ -117,7 +122,7 @@ class CaseServiceTest {
 
     @Test
     void refreshBypassesTheCacheAndIsNotForwarded() {
-        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", "u1"));
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", ts(1)));
         when(client.getCase("t1")).thenReturn(detail("t1", review("triage", "Triage", "opened")));
 
         service.listCaseSummaries(Map.of());
@@ -135,7 +140,7 @@ class CaseServiceTest {
 
     @Test
     void oneFailingCaseDoesNotHideTheOthers() {
-        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "good", "u1", "bad", "u2"));
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "good", ts(1), "bad", ts(2)));
         when(client.getCase("good")).thenReturn(detail("good", review("triage", "Triage", "opened")));
         when(client.getCase("bad")).thenThrow(new HummingbirdApiException(404, "NOT_FOUND", "Case not found", null));
 
@@ -149,7 +154,7 @@ class CaseServiceTest {
 
     @Test
     void authFailuresAbortTheRequest() {
-        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", "u1"));
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", ts(1)));
         when(client.getCase("t1")).thenThrow(new HummingbirdApiException(401, "AUTH_ERROR", "bad token", null));
 
         HummingbirdApiException e = assertThrows(HummingbirdApiException.class, () -> service.listCaseSummaries(Map.of()));
@@ -158,7 +163,7 @@ class CaseServiceTest {
 
     @Test
     void parallelDetailCallsAreLimited() {
-        String[] six = {"t1", "u", "t2", "u", "t3", "u", "t4", "u", "t5", "u", "t6", "u"};
+        Object[] six = {"t1", ts(1), "t2", ts(1), "t3", ts(1), "t4", ts(1), "t5", ts(1), "t6", ts(1)};
         when(client.listCases(anyMap())).thenReturn(listOf(false, null, six));
         AtomicInteger running = new AtomicInteger();
         AtomicInteger peak = new AtomicInteger();
@@ -167,11 +172,22 @@ class CaseServiceTest {
             peak.accumulateAndGet(now, Math::max);
             Thread.sleep(40);
             running.decrementAndGet();
-            return detail(inv.getArgument(0), review("triage", "Triage", "opened"));
+            return detail(inv.<String>getArgument(0), review("triage", "Triage", "opened"));
         });
 
         assertEquals(6, service.listCaseSummaries(Map.of()).cases().size());
         assertTrue(peak.get() <= 2, "at most 2 in flight, saw " + peak.get());
         assertTrue(peak.get() >= 1);
+    }
+
+    @Test
+    void anUndocumentedReviewStatusIsTreatedAsStillActiveAndPassedThrough() {
+        when(client.listCases(anyMap())).thenReturn(listOf(false, null, "t1", ts(1)));
+        when(client.getCase("t1")).thenReturn(detail("t1", review("triage", "Triage", "brand_new_status")));
+
+        CaseSummary s = service.listCaseSummaries(Map.of()).cases().get(0);
+
+        assertEquals("BRAND_NEW_STATUS", s.status());
+        assertEquals("Triage", s.stage());
     }
 }
