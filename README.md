@@ -28,7 +28,7 @@ on webhook arrival, or every 2 minutes while non-final if webhooks are not set u
 * `HummingbirdClient` returns typed records (`client.model`) that model only the fields this app reads; unknown fields are ignored,
   so Hummingbird can add fields without breaking us. Timestamps are `Instant`, review status is `ReviewStatus` (an undocumented
   status is tolerated). The `...Json` methods return the raw JSON and exist only for the console's pass-through endpoints
-  (`/api/cases`, `/api/cases/{token}`, `/api/reviews`). The request body of `POST /alert_imports` is still built as a map.
+  (`/api/cases`, `/api/cases/{token}`, `/api/reviews`). The `POST /alert_imports` body is `AlertImportRequest` (also records).
 * On HTTP 401 the client drops its cached access token and retries once with a new one (revoked or rotated key).
 * The API has **no "list alerts" endpoint**, so this app keeps its own copy in H2.
 * Processing is asynchronous (usually < 5 min). After 3 failed attempts an alert is `stuck`; only Hummingbird support can un-stick it.

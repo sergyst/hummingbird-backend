@@ -1,6 +1,7 @@
 package com.example.alerts.client;
 
 import com.example.alerts.client.model.AccessTokenResponse;
+import com.example.alerts.client.model.AlertImportRequest;
 import com.example.alerts.client.model.AlertImportStatusResponse;
 import com.example.alerts.client.model.AlertImportsCreated;
 import com.example.alerts.client.model.ApiErrorResponse;
@@ -71,10 +72,9 @@ public class HummingbirdClient {
     // ---------------------------------------------------------------- alerts
 
     /**
-     * POST /alert_imports. The request body is still a plain map (see {@code AlertService.buildPayload}); only
-     * responses are typed. {@code token} in the response is the processing token.
+     * POST /alert_imports. {@code token} in the response is the processing token.
      */
-    public AlertImportsCreated upsertAlertImport(Map<String, Object> payload) {
+    public AlertImportsCreated upsertAlertImport(AlertImportRequest payload) {
         return call(HttpMethod.POST, "/alert_imports", Map.of(), payload, true, body(AlertImportsCreated.class));
     }
 

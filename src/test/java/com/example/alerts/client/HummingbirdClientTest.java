@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.example.alerts.client.model.AlertImportRequest;
 import com.example.alerts.client.model.AlertImportStatus;
 import com.example.alerts.client.model.AlertImportsCreated;
 import com.example.alerts.client.model.CaseAlert;
@@ -137,7 +138,7 @@ class HummingbirdClientTest {
 
     @Test
     void alertImportResponseGivesTheProcessingToken() {
-        AlertImportsCreated res = client.upsertAlertImport(Map.of("alerts", List.of()));
+        AlertImportsCreated res = client.upsertAlertImport(new AlertImportRequest(List.of(), null, null));
 
         assertEquals("aim_abc", res.processingTokenFor("WL-1"));
         assertNull(res.processingTokenFor("someone-else"));

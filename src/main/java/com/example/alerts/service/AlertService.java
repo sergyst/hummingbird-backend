@@ -2,6 +2,7 @@ package com.example.alerts.service;
 
 import com.example.alerts.client.HummingbirdApiException;
 import com.example.alerts.client.HummingbirdClient;
+import com.example.alerts.client.model.AlertImportRequest;
 import com.example.alerts.client.model.AlertImportStatus;
 import com.example.alerts.client.model.AlertImportStatusResponse;
 import com.example.alerts.client.model.AlertImportsCreated;
@@ -182,87 +183,53 @@ public class AlertService {
         return t.currency() == null || t.currency().isBlank() ? "USD" : t.currency().trim().toUpperCase(Locale.ROOT);
     }
 
-    Map<String, Object> buildPayload(SubmitAlertRequest req, List<TransactionInput> txs,
-                                             String externalId, Instant triggeredAt) {
-        Map<String, Object> alert = new LinkedHashMap<>();
-        alert.put("id", externalId);
-        alert.put("triggered_at", triggeredAt.toString());
-        alert.put("rule", req.rule().trim());
-        if (req.comments() != null && !req.comments().isBlank()) {
-            alert.put("comments", req.comments().trim());
-        }
-        if (req.reviewTags() != null && !req.reviewTags().isEmpty()) {
-            alert.put("review_tags", req.reviewTags().stream().map(String::trim).filter(s -> !s.isEmpty()).toList());
-        }
+    AlertImportRequest buildPayload(SubmitAlertRequest req, List<TransactionInput> txs,
+                                    String externalId, Instant triggeredAt) {
+        List<AlertImportRequest.Reference> references = new ArrayList<>();
 
-        if (req.otherInfo() != null && !req.otherInfo().isEmpty()) {
-            alert.put("other_info", req.otherInfo().stream()
-                    .map(o -> Map.of("label", o.label().trim(), "value", o.value().trim()))
-                    .toList());
-        }
-
-        List<Map<String, Object>> references = new ArrayList<>();
-        Map<String, Object> data = new LinkedHashMap<>();
-
-        if (req.cryptoAddresses() != null && !req.cryptoAddresses().isEmpty()) {
-            List<Map<String, Object>> addresses = new ArrayList<>();
+        List<AlertImportRequest.CryptoAddress> addresses = new ArrayList<>();
+        if (req.cryptoAddresses() != null) {
             for (int i = 0; i < req.cryptoAddresses().size(); i++) {
                 CryptoAddressInput c = req.cryptoAddresses().get(i);
                 String addrId = c.id() == null || c.id().isBlank() ? "ADDR-" + externalId + "-" + (i + 1) : c.id().trim();
-                Map<String, Object> addr = new LinkedHashMap<>();
-                addr.put("id", addrId);
-                addr.put("address", c.address().trim());
-                addr.put("blockchain", c.blockchain().trim().toUpperCase(Locale.ROOT));
-                addresses.add(addr);
-                references.add(Map.of("type", "crypto_address", "id", addrId));
+                addresses.add(new AlertImportRequest.CryptoAddress(addrId, c.address().trim(),
+                        c.blockchain().trim().toUpperCase(Locale.ROOT)));
+                references.add(new AlertImportRequest.Reference("crypto_address", addrId));
             }
-            data.put("crypto_addresses", addresses);
         }
 
+        List<AlertImportRequest.Individual> individuals = new ArrayList<>();
         if (req.subjectName() != null && !req.subjectName().isBlank()) {
             String individualId = "IND-" + externalId;
-            data.put("individuals", List.of(Map.of(
-                    "id", individualId,
-                    "names", List.of(Map.of("name", req.subjectName().trim())))));
-            references.add(Map.of("type", "individual", "id", individualId));
+            individuals.add(new AlertImportRequest.Individual(individualId,
+                    List.of(new AlertImportRequest.Name(req.subjectName().trim()))));
+            references.add(new AlertImportRequest.Reference("individual", individualId));
         }
 
-        if (!txs.isEmpty()) {
-            List<Map<String, Object>> payloadTxs = new ArrayList<>();
-            for (int i = 0; i < txs.size(); i++) {
-                TransactionInput t = txs.get(i);
-                String txId = "TX-" + externalId + "-" + (i + 1);
-                // amount and amount_local are both required by the schema
-                Map<String, Object> money = Map.of("amount", t.amountMinor() == null ? 0L : t.amountMinor(),
-                        "currency_code", currencyOf(t));
-                Map<String, Object> tx = new LinkedHashMap<>();
-                tx.put("id", txId);
-                tx.put("amount", money);
-                tx.put("amount_local", money);
-                tx.put("initiated_at", (t.initiatedAt() == null ? triggeredAt : t.initiatedAt()).toString());
-                tx.put("direction", "CREDIT".equalsIgnoreCase(t.direction()) ? "CREDIT" : "DEBIT");
-                if (t.description() != null && !t.description().isBlank()) {
-                    tx.put("description", t.description().trim());
-                }
-                payloadTxs.add(tx);
-                references.add(Map.of("type", "transaction", "id", txId));
-            }
-            data.put("transactions", payloadTxs);
+        List<AlertImportRequest.Transaction> transactions = new ArrayList<>();
+        for (int i = 0; i < txs.size(); i++) {
+            TransactionInput t = txs.get(i);
+            String txId = "TX-" + externalId + "-" + (i + 1);
+            // amount and amount_local are both required by the schema
+            AlertImportRequest.Money money = new AlertImportRequest.Money(
+                    t.amountMinor() == null ? 0L : t.amountMinor(), currencyOf(t));
+            transactions.add(new AlertImportRequest.Transaction(txId, money, money,
+                    (t.initiatedAt() == null ? triggeredAt : t.initiatedAt()).toString(),
+                    "CREDIT".equalsIgnoreCase(t.direction()) ? "CREDIT" : "DEBIT",
+                    t.description() == null || t.description().isBlank() ? null : t.description().trim()));
+            references.add(new AlertImportRequest.Reference("transaction", txId));
         }
 
-        if (!references.isEmpty()) {
-            alert.put("references", references);
-        }
+        List<String> tags = req.reviewTags() == null ? null
+                : req.reviewTags().stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
+        List<AlertImportRequest.OtherInfo> otherInfo = req.otherInfo() == null ? null
+                : req.otherInfo().stream()
+                        .map(o -> new AlertImportRequest.OtherInfo(o.label().trim(), o.value().trim())).toList();
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("alerts", List.of(alert));
-        if (req.workflow() != null && !req.workflow().isBlank()) {
-            payload.put("workflow", req.workflow().trim());
-        }
-        if (!data.isEmpty()) {
-            payload.put("data", data);
-        }
-        return payload;
+        AlertImportRequest.Alert alert = new AlertImportRequest.Alert(externalId, triggeredAt.toString(),
+                req.rule().trim(), blankToNull(req.comments()), tags, otherInfo, references);
+        AlertImportRequest.Data data = new AlertImportRequest.Data(addresses, individuals, transactions);
+        return new AlertImportRequest(List.of(alert), blankToNull(req.workflow()), data.isBlank() ? null : data);
     }
 
     private static String extractProcessingToken(AlertImportsCreated response, String externalId) {
