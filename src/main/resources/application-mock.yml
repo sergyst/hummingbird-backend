@@ -1,13 +1,14 @@
-# Run against hummingbird-mock instead of the real Hummingbird sandbox:
-#   mvn spring-boot:run -Dspring-boot.run.profiles=mock          (or --spring.profiles.active=mock)
-# The mock listens on :8089 and accepts mock-client / mock-secret. Environment variables still win, so e.g.
-# HUMMINGBIRD_BASEURL=http://localhost:9000 points at a mock on another port.
-#
-# Webhooks: the mock posts to http://localhost:8080/api/webhooks/hummingbird by default. If this backend is not on 8080
-# (use --server.port=...), start the mock with --mock.webhook-url=http://localhost:<port>/api/webhooks/hummingbird
-# or --mock.webhooks-enabled=false. The secret below matches the mock's default.
+# Run against the embedded mock instead of the real Hummingbird sandbox:
+#   mvn spring-boot:run -Dspring-boot.run.profiles=mock          (or SPRING_PROFILES_ACTIVE=mock, e.g. on OpenShift)
+# The mock lives inside this application (com.example.alerts.mock) and serves the Hummingbird API under
+# /hummingbird-mock, so there is nothing else to start. The client talks to it over loopback HTTP, i.e. through the
+# same code path as a real call. Environment variables still win, e.g. HUMMINGBIRD_BASEURL to use another URL.
+# server.port is resolved at startup, so --server.port=8090 is picked up; set HUMMINGBIRD_BASEURL if the app is
+# reachable on a different port than it listens on.
 hummingbird:
-  base-url: ${HUMMINGBIRD_BASEURL:http://localhost:8089}
-  client-id: ${HUMMINGBIRD_CLIENT_ID:mock-client}
-  client-secret: ${HUMMINGBIRD_CLIENT_SECRET:mock-secret}
-  webhook-secret: ${HUMMINGBIRD_WEBHOOK_SECRET:mock-webhook-secret}
+  base-url: ${HUMMINGBIRD_BASEURL:http://localhost:${server.port:8080}/hummingbird-mock}
+  client-id: ${HUMMINGBIRD_CLIENT_ID:${hummingbird.mock.client-id}}
+  client-secret: ${HUMMINGBIRD_CLIENT_SECRET:${hummingbird.mock.client-secret}}
+  webhook-secret: ${HUMMINGBIRD_WEBHOOK_SECRET:${hummingbird.mock.webhook-secret}}
+  mock:
+    enabled: true

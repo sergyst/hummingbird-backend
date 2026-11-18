@@ -63,18 +63,37 @@ Build the UI (`npm run build` in hummingbird-ui), copy its `dist/` contents into
 mvn package && java -jar target/hummingbird-alerts-0.1.0.jar    # everything on :8080
 ```
 
-### Against hummingbird-mock (no real credentials)
-Start [hummingbird-mock](https://github.com/sergyst/hummingbird-mock) (port 8089), then run the backend with the `mock` profile:
+### Embedded mock (no real credentials, nothing else to deploy)
+The simulated Hummingbird lives inside this application (`com.example.alerts.mock`, in-memory) and is switched on by
+configuration. The backend still reaches it over HTTP at `hummingbird.base-url`, so the mock goes through exactly the same
+client code as the real API.
+
+| Mode | How | `hummingbird.base-url` |
+| --- | --- | --- |
+| Sandbox (default) | nothing | `https://api.sandbox.hummingbird.co` |
+| Production | `HUMMINGBIRD_BASEURL=https://api.hummingbird.co` + real credentials | production |
+| Embedded mock | `mock` profile (`SPRING_PROFILES_ACTIVE=mock`) or `hummingbird.mock.enabled=true` | `http://localhost:<server.port>/hummingbird-mock` |
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.profiles=mock                      # or: --spring.profiles.active=mock
+mvn spring-boot:run -Dspring-boot.run.profiles=mock
 mvn spring-boot:run -Dspring-boot.run.profiles=mock -Dspring-boot.run.arguments=--server.port=8090   # if 8080 is taken
 ```
-`application-mock.yml` sets `hummingbird.base-url=http://localhost:8089` and the mock's credentials and webhook secret; the
-UI shows a "Local mock" label. Without the profile the backend talks to the real sandbox (`application.yml`). Environment
-variables still override the profile (`HUMMINGBIRD_BASEURL`, `HUMMINGBIRD_CLIENT_ID`, ...). The mock sends webhooks to
-`localhost:8080` by default, so when the backend runs on another port start the mock with
-`--mock.webhook-url=http://localhost:<port>/api/webhooks/hummingbird` (or `--mock.webhooks-enabled=false`).
+The profile enables the mock, points the base URL at it and sets its credentials (`mock-client` / `mock-secret`) and
+webhook secret. The UI shows a "Local mock" label. Environment variables still win (`HUMMINGBIRD_BASEURL`,
+`HUMMINGBIRD_CLIENT_ID`, ...). The mock sends its webhooks to this backend's own `/api/webhooks/hummingbird`
+(override with `hummingbird.mock.webhook-url`, or turn them off with `hummingbird.mock.webhooks-enabled=false`).
+Timings and chaos knobs are under `hummingbird.mock.*` in `application.yml` (`process-delay`, `review-delay`,
+`rate-limit-every`, ...).
+
+* **Endpoints:** the Hummingbird API under `/hummingbird-mock/...` (`/oauth/token`, `/alert_imports`, `/alerts/...`,
+  `/cases`, `/reviews`) and its control panel under `/hummingbird-mock/mock/...` (`/directives`, `/alerts`,
+  `/alerts/{id}/fast-forward`, `/cases/merge`, `/webhooks`, `/reset`). Alert comments can carry directives such as
+  `mock:filed`, `mock:escalated` or `fail`; `GET /hummingbird-mock/mock/directives` lists them.
+* **OpenShift / containers:** set `SPRING_PROFILES_ACTIVE=mock`. The app listens on 8080 and calls itself on
+  `localhost:8080`; if you change `SERVER_PORT`, the base URL follows it. If the app is reachable on another port
+  than it listens on, set `HUMMINGBIRD_BASEURL` explicitly.
+* **Safety:** the mock is off unless enabled, has no auth on its control endpoints and keeps everything in memory.
+  Use it for test environments only.
 
 ## Webhooks (optional)
 Alerts are also polled every 30 s (`hummingbird.poll-interval`), so webhooks are optional. To use them:

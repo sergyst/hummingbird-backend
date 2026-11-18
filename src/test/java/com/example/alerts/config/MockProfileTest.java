@@ -24,13 +24,20 @@ class MockProfileTest {
     void mockProfilePointsAtTheMockWithItsCredentials() {
         runner.withPropertyValues("spring.profiles.active=mock").run(ctx -> {
             HummingbirdProperties p = ctx.getBean(HummingbirdProperties.class);
-            assertEquals("http://localhost:8089", p.baseUrl());
+            assertEquals("http://localhost:8080/hummingbird-mock", p.baseUrl());
             assertEquals("local", p.environment());
             assertEquals("mock-client", p.clientId());
             assertEquals("mock-secret", p.clientSecret());
             assertEquals("mock-webhook-secret", p.webhookSecret());
             assertTrue(p.hasCredentials());
+            assertEquals("true", ctx.getEnvironment().getProperty("hummingbird.mock.enabled"));
         });
+    }
+
+    @Test
+    void mockProfileFollowsTheServerPort() {
+        runner.withPropertyValues("spring.profiles.active=mock", "server.port=8090").run(ctx ->
+                assertEquals("http://localhost:8090/hummingbird-mock", ctx.getBean(HummingbirdProperties.class).baseUrl()));
     }
 
     @Test
@@ -46,6 +53,7 @@ class MockProfileTest {
             assertEquals("https://api.sandbox.hummingbird.co", p.baseUrl());
             assertEquals("sandbox", p.environment());
             assertFalse(p.webhookSecret().equals("mock-webhook-secret"), "mock secrets must not leak into the default profile");
+            assertEquals("false", ctx.getEnvironment().getProperty("hummingbird.mock.enabled"), "the mock is off by default");
         });
     }
 }

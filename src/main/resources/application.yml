@@ -29,3 +29,24 @@ hummingbird:
   poll-interval: PT30S
   # Parallel GET /cases/{token} calls when building case summaries (keep low to stay under Hummingbird's rate limit)
   case-detail-concurrency: 4
+  # In-process stand-in for Hummingbird, for environments with no sandbox access (see README, "Embedded mock").
+  # Off by default. When on, it serves the Hummingbird API under /hummingbird-mock on this same server; point
+  # hummingbird.base-url there (the "mock" profile does). Never enable it where real alerts matter.
+  mock:
+    enabled: false
+    # Credentials the mock accepts at /oauth/token; leave both blank to accept anything.
+    client-id: mock-client
+    client-secret: mock-secret
+    api-version: "2026-02-05"
+    token-ttl-seconds: 3600
+    # Webhooks go to this backend's own /api/webhooks/hummingbird unless webhook-url is set, signed with webhook-secret.
+    webhooks-enabled: true
+    webhook-url:
+    webhook-secret: mock-webhook-secret
+    # Lifecycle timings (real Hummingbird: processing < 5 min, reviews take humans hours/days)
+    process-delay: PT8S
+    review-delay: PT20S
+    decision-delay: PT20S
+    filing-delay: PT20S
+    # Answer every Nth authenticated request with 429 + Retry-After (0 = off)
+    rate-limit-every: 0
